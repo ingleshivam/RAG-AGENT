@@ -1,0 +1,8 @@
+streamlit
+langchain
+langchain-community
+qdrant-client
+pdf2image
+pytesseract
+PyMuPDF
+python-dotenv
