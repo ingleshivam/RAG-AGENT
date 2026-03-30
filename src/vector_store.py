@@ -2,10 +2,10 @@ import os
 import re
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
-from langchain_community.embeddings import OllamaEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.docstore.document import Document
+from qdrant_client.models import Distance, VectorParams, PayloadSchemaType
+from langchain_ollama import OllamaEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore
 
 load_dotenv()
@@ -28,10 +28,27 @@ def get_qdrant_client():
         
     return client
 
+def ensure_payload_index(client):
+    """
+    Creates a payload index for metadata.document_name to allow efficient filtering.
+    """
+    try:
+        # Check if collection exists first to avoid error if it's not created yet
+        collections = client.get_collections().collections
+        if any(c.name == COLLECTION_NAME for c in collections):
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="metadata.document_name",
+                field_schema=PayloadSchemaType.KEYWORD
+            )
+            print(f"Payload index ensured for {COLLECTION_NAME}")
+    except Exception as e:
+        print(f"Warning: Could not create payload index: {e}")
+
 def get_embeddings_model():
     return OllamaEmbeddings(
         base_url=OLLAMA_BASE_URL,
-        model="qwen3-embedding:latest"
+        model="nomic-embed-text:v1.5"
     )
 
 def parse_extracted_text(file_path: str):
@@ -68,6 +85,7 @@ def get_vector_store():
     Returns an initialized QdrantVectorStore wrapper. Expected to be used during retrieval.
     """
     client = get_qdrant_client()
+    ensure_payload_index(client) # Ensure index for filtering
     embeddings = get_embeddings_model()
     
     vector_store = QdrantVectorStore(

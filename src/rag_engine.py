@@ -1,9 +1,9 @@
 import os
 import textwrap
 from dotenv import load_dotenv
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 from langchain_core.prompts import PromptTemplate
-from langchain.chains import create_retrieval_chain
+from langchain.chains.retrieval import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from src.vector_store import get_vector_store
@@ -13,7 +13,7 @@ load_dotenv()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 def get_llm():
-    return Ollama(
+    return OllamaLLM(
         base_url=OLLAMA_BASE_URL,
         model="gpt-oss:latest",
         temperature=0.1
@@ -24,8 +24,11 @@ def setup_rag_chain():
     Sets up the RAG chain using LangChain LCEL.
     Returns a function that can query the chain for a specific document.
     """
-    llm = get_llm()
-    vector_store = get_vector_store()
+    try:
+        llm = get_llm()
+        vector_store = get_vector_store()
+    except Exception as e:
+        raise RuntimeError(f"Initialization error in RAG components: {e}")
     
     # Define a prompt template that encourages citation
     prompt_template = """You are a helpful assistant for document analysis. Use the following pieces of retrieved context to answer the user's question. 

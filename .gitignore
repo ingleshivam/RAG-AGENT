@@ -1,1 +1,23 @@
+# Secrets
 .env
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Python Bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local Data and Results
+data/
+*.txt
+*.pdf
+
+# Test Scripts (Temporary)
+test_init.py
+test.py

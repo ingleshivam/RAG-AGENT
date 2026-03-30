@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import streamlit as st
 from src.pdf_processor import process_directory
@@ -17,9 +18,12 @@ os.makedirs(RAW_PDF_DIR, exist_ok=True)
 os.makedirs(EXTRACTED_TEXT_DIR, exist_ok=True)
 
 # Main Application State
-if "rag_chain" not in st.session_state:
+if "rag_chain" not in st.session_state or st.session_state.rag_chain is None:
     try:
-        st.session_state.rag_chain = setup_rag_chain()
+        with st.spinner("Initializing RAG Engine..."):
+            st.session_state.rag_chain = setup_rag_chain()
+        if st.session_state.rag_chain:
+            st.success("RAG Engine ready!")
     except Exception as e:
         st.error(f"Failed to initialize RAG Engine: {e}. Is Ollama & Qdrant running?")
         st.session_state.rag_chain = None
