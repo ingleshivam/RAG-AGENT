@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PayloadSchemaType
 from langchain_ollama import OllamaEmbeddings
+from groq import Groq
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore
@@ -95,6 +96,29 @@ def get_vector_store():
     )
     return vector_store
 
+def get_summarizer_llm():
+    return Groq()
+
+def summarize_chunk(chunk_text: str, client: Groq) -> str:
+    prompt = (
+        "Summarize the following text objectively and accurately in one concise natural language sentence. "
+        "Focus on the core content. Do not include any introductory phrases like 'This text is about'.\n\n"
+        f"Text:\n{chunk_text}\n\nSummary:"
+    )
+    try:
+        completion = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_completion_tokens=256,
+            reasoning_effort="low",
+            stream=False,
+        )
+        return completion.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Summarization failed: {e}")
+        return chunk_text # Fallback to full text if failed
+
 def store_documents_in_qdrant(text_files):
     """
     Chunks documents, embeds, and stores them in Qdrant.
@@ -113,7 +137,24 @@ def store_documents_in_qdrant(text_files):
         chunks = text_splitter.split_documents(docs)
         all_chunks.extend(chunks)
         
-    print(f"Total chunks to insert: {len(all_chunks)}")
+    print(f"Total chunks to process: {len(all_chunks)}")
+    print("Generating summaries using remote openai/gpt-oss-120b via Groq...")
+    
+    # Simple sleep import to help avoid slamming the free tier rating
+    import time
+    
+    summarizer_llm = get_summarizer_llm()
+    for i, chunk in enumerate(all_chunks):
+        if i > 0 and i % 5 == 0:
+            print(f"Summarizing chunk {i+1}/{len(all_chunks)}...")
+            time.sleep(1) # Small delay to mitigate rate-limits
+            
+        original_text = chunk.page_content
+        summary = summarize_chunk(original_text, summarizer_llm)
+        
+        # Strategy: Embed the summary, store the raw text safely in metadata
+        chunk.metadata["full_content"] = original_text
+        chunk.page_content = summary
     
     if all_chunks:
         if QDRANT_URL and QDRANT_API_KEY:

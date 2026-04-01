@@ -84,7 +84,7 @@ if st.session_state.active_document:
                 with st.expander("View Sources"):
                     for i, source in enumerate(msg["sources"]):
                         page = source.metadata.get('page_number', 'N/A')
-                        st.markdown(f"**Page {page}**: \n`{source.page_content[:300]}...`")
+                        st.markdown(f"**Page {page}**:\n```text\n{source.page_content}\n```")
             
     # Input box
     if prompt := st.chat_input("Ask a question about the document..."):
@@ -108,7 +108,7 @@ if st.session_state.active_document:
                         with st.expander("View Sources"):
                             for i, source in enumerate(sources):
                                 page = source.metadata.get('page_number', 'N/A')
-                                st.markdown(f"**Page {page}**: \n`{source.page_content[:300]}...`")
+                                st.markdown(f"**Page {page}**:\n```text\n{source.page_content}\n```")
                                 
                     st.session_state.messages.append({
                         "role": "assistant",
