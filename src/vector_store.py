@@ -1,13 +1,13 @@
-import os
+﻿import os
 import re
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PayloadSchemaType
 from langchain_ollama import OllamaEmbeddings
+from langchain_qdrant import QdrantVectorStore, FastEmbedSparse, RetrievalMode
 from groq import Groq
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from langchain_qdrant import QdrantVectorStore
 
 load_dotenv()
 
@@ -52,6 +52,10 @@ def get_embeddings_model():
         model="nomic-embed-text:v1.5"
     )
 
+def get_sparse_embeddings_model():
+    """Returns a BM25 sparse embedding model via FastEmbed for keyword-based retrieval."""
+    return FastEmbedSparse(model_name="Qdrant/bm25")
+
 def parse_extracted_text(file_path: str):
     """
     Parses the text file formatted by pdf_processor.py
@@ -83,16 +87,19 @@ def parse_extracted_text(file_path: str):
 
 def get_vector_store():
     """
-    Returns an initialized QdrantVectorStore wrapper. Expected to be used during retrieval.
+    Returns an initialized QdrantVectorStore wrapper with hybrid (dense + sparse) support.
     """
     client = get_qdrant_client()
-    ensure_payload_index(client) # Ensure index for filtering
+    ensure_payload_index(client)
     embeddings = get_embeddings_model()
+    sparse_embeddings = get_sparse_embeddings_model()
     
     vector_store = QdrantVectorStore(
         client=client,
         collection_name=COLLECTION_NAME,
         embedding=embeddings,
+        sparse_embedding=sparse_embeddings,
+        retrieval_mode=RetrievalMode.HYBRID,
     )
     return vector_store
 
@@ -121,9 +128,10 @@ def summarize_chunk(chunk_text: str, client: Groq) -> str:
 
 def store_documents_in_qdrant(text_files):
     """
-    Chunks documents, embeds, and stores them in Qdrant.
+    Chunks documents, embeds (dense + sparse), and stores them in Qdrant for hybrid search.
     """
     embeddings = get_embeddings_model()
+    sparse_embeddings = get_sparse_embeddings_model()
     
     all_chunks = []
     text_splitter = RecursiveCharacterTextSplitter(
@@ -140,14 +148,13 @@ def store_documents_in_qdrant(text_files):
     print(f"Total chunks to process: {len(all_chunks)}")
     print("Generating summaries using remote openai/gpt-oss-120b via Groq...")
     
-    # Simple sleep import to help avoid slamming the free tier rating
     import time
     
     summarizer_llm = get_summarizer_llm()
     for i, chunk in enumerate(all_chunks):
         if i > 0 and i % 5 == 0:
             print(f"Summarizing chunk {i+1}/{len(all_chunks)}...")
-            time.sleep(1) # Small delay to mitigate rate-limits
+            time.sleep(1)
             
         original_text = chunk.page_content
         summary = summarize_chunk(original_text, summarizer_llm)
@@ -157,23 +164,29 @@ def store_documents_in_qdrant(text_files):
         chunk.page_content = summary
     
     if all_chunks:
+        print("Storing chunks with hybrid (dense + sparse) vectors in Qdrant...")
         if QDRANT_URL and QDRANT_API_KEY:
             vector_store = QdrantVectorStore.from_documents(
                 documents=all_chunks,
                 embedding=embeddings,
+                sparse_embedding=sparse_embeddings,
+                retrieval_mode=RetrievalMode.HYBRID,
                 collection_name=COLLECTION_NAME,
                 url=QDRANT_URL,
                 api_key=QDRANT_API_KEY,
-                force_recreate=False
+                force_recreate=False  # Needed to add sparse vector config to collection
             )
         else:
             vector_store = QdrantVectorStore.from_documents(
                 documents=all_chunks,
                 embedding=embeddings,
+                sparse_embedding=sparse_embeddings,
+                retrieval_mode=RetrievalMode.HYBRID,
                 collection_name=COLLECTION_NAME,
                 path="data/qdrant_local",
-                force_recreate=False
+                force_recreate=False  # Needed to add sparse vector config to collection
             )
+        print("Hybrid indexing complete!")
         return vector_store
     return None
 

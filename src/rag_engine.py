@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import textwrap
 from dotenv import load_dotenv
@@ -35,7 +35,7 @@ class GroqLLM(LLM):
     ) -> str:
         from groq import Groq
         client = Groq()
-        print("🚨 PROMPT : ", prompt)
+        print("PROMPT : ", prompt)
         args = {
             "model": self.model_name,
             "messages": [
@@ -62,12 +62,14 @@ def get_llm():
 
 def setup_rag_chain():
     """
-    Sets up the RAG chain using LangChain LCEL.
+    Sets up the RAG chain using LangChain LCEL with hybrid search (dense + sparse).
     Returns a function that can query the chain for a specific document.
     """
     try:
         llm = get_llm()
         vector_store = get_vector_store()
+        print("LLM : ", llm)
+        print("Vector Store : ", vector_store)
     except Exception as e:
         raise RuntimeError(f"Initialization error in RAG components: {e}")
     
@@ -91,10 +93,10 @@ Answer:"""
     
     def query_document(query: str, document_name: str):
         """
-        Retrieves context filtered by document_name and generates an answer.
+        Retrieves context using hybrid search (dense + sparse), filtered by document_name,
+        and generates an answer.
         """
-        # Create a retriever specifically filtered by document_name
-        # Qdrant uses payload filters. Langchain Qdrant passes filter natively to Qdrant Client.
+        # Payload filter to scope results to a specific document
         filter_condition = Filter(
             must=[
                 FieldCondition(
@@ -104,9 +106,10 @@ Answer:"""
             ]
         )
         
-        # Langchain Qdrant support allows passing filter in search_kwargs
+        # Hybrid search: combines semantic similarity (dense) with BM25 keyword (sparse)
         retriever = vector_store.as_retriever(
-            search_type="similarity",
+            search_type="similarity",  # langchain_qdrant uses "similarity" even in hybrid mode;
+                                       # the RetrievalMode.HYBRID flag on the store itself handles fusion
             search_kwargs={
                 "k": 5,
                 "filter": filter_condition
@@ -155,7 +158,7 @@ Answer:"""
             if not used_source_documents:
                 used_source_documents = all_source_documents
                 
-            # Clean up the output so CITED_PAGES doesn't show in the Streamlit UI answer text
+            # Clean up the output so CITED_PAGES doesn't show in the UI answer text
             answer_text = re.sub(r"CITED_PAGES:\s*\[.*?\]", "", answer_text).strip()
 
             # Clean up the injected tag before returning to UI
@@ -181,7 +184,7 @@ Answer:"""
 if __name__ == "__main__":
     # Simple test shell
     query_fn = setup_rag_chain()
-    print("RAG System Initialized.")
+    print("RAG System Initialized (Hybrid Search enabled).")
     test_q = input("Ask a question: ")
     test_doc = input("Document name (e.g. sample.pdf): ")
     res = query_fn(test_q, test_doc)
